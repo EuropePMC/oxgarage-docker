@@ -1,22 +1,13 @@
-FROM jetty:alpine
+FROM tomcat:7-jre8
 
-ENV JETTY_WEBAPPS "$JETTY_BASE"/webapps
+ENV TOMCAT_WEBAPPS "$CATALINA_HOME"/webapps
 ENV OFFICE_HOME /usr/lib/libreoffice
 
 # current Stylesheets stable (= master branch) version 
 ENV STYLESHEETS_URL http://jenkins.tei-c.org/job/Stylesheets/lastSuccessfulBuild/artifact/tei-xsl-7.43.0.zip
 
-# current Stylesheets development version
-# ENV STYLESHEETS_URL http://jenkins.tei-c.org/job/Stylesheets-dev/lastSuccessfulBuild/artifact/tei-xsl-7.44.0a.zip
-
-# current TEI Guidelines stable (= master branch) version 
+# current TEI Guidelines stable (= master branch) version
 ENV GUIDELINES_URL http://jenkins.tei-c.org/job/TEIP5/lastSuccessfulBuild/artifact/P5/tei-3.2.0.zip
-
-# current TEI Guidelines development version
-# ENV GUIDELINES_URL http://jenkins.tei-c.org/job/TEIP5-dev/lastSuccessfulBuild/artifact/P5/tei-3.3.0a.zip
-
-ENV WEBCLIENT_URL http://jenkins.tei-c.org/job/OxGarage/lastSuccessfulBuild/artifact/ege-webclient/target/ege-webclient.war
-ENV WEBSERVICE_URL http://jenkins.tei-c.org/job/OxGarage/lastSuccessfulBuild/artifact/ege-webservice/target/ege-webservice.war
 
 USER root:root
 COPY oxgarage.properties /etc/
@@ -24,8 +15,9 @@ COPY log4j.xml /var/cache/oxgarage/log4j.xml
 
 ADD $STYLESHEETS_URL /tmp/
 ADD $GUIDELINES_URL /tmp/
-ADD $WEBCLIENT_URL /tmp/
-ADD $WEBSERVICE_URL /tmp/
+
+COPY ege-webclient-0.3.war /tmp/ege-webclient.war
+COPY ege-webservice-0.5.2.war /tmp/ege-webservice.war
 
 RUN unzip -q /tmp/tei-xsl*.zip -d  /usr/share/ \
     && rm -Rf /tmp/tei-xsl*.zip \
@@ -39,21 +31,24 @@ RUN unzip -q /tmp/tei-xsl*.zip -d  /usr/share/ \
         /usr/share/xml/tei/odd/ReleaseNotes \
         /usr/share/xml/tei/custom/templates 
         
-RUN mkdir "$JETTY_WEBAPPS"/ege-webclient \
-    && unzip -q /tmp/ege-webclient.war -d "$JETTY_WEBAPPS"/ege-webclient/ \
+RUN mkdir "$TOMCAT_WEBAPPS"/ege-webclient \
+    && unzip -q /tmp/ege-webclient.war -d "$TOMCAT_WEBAPPS"/ege-webclient/ \
     && rm /tmp/ege-webclient.war
-RUN mkdir "$JETTY_WEBAPPS"/ege-webservice \
-    && unzip -q /tmp/ege-webservice.war -d "$JETTY_WEBAPPS"/ege-webservice/ \
+RUN mkdir "$TOMCAT_WEBAPPS"/ege-webservice \
+    && unzip -q /tmp/ege-webservice.war -d "$TOMCAT_WEBAPPS"/ege-webservice/ \
     && rm /tmp/ege-webservice.war
-RUN apk --update add libreoffice \
+
+# https://www.howtoinstall.co/en/ubuntu/xenial/fonts-noto
+RUN apt-get update -qq && apt-get install -y apt-utils libreoffice \
     ttf-dejavu \
     ttf-linux-libertine \ 
-    font-noto \
+    fonts-noto \
+    procps \
     && ln -s $OFFICE_HOME /usr/lib/openoffice 
 
-RUN chown -R jetty:jetty /var/cache/oxgarage \
-    "$JETTY_WEBAPPS"/*
+COPY webservice_web.xml "$TOMCAT_WEBAPPS"/ege-webservice/WEB-INF/web.xml
 
-USER jetty:jetty
+# add some Jetty jars needed for CORS support
+ADD http://central.maven.org/maven2/org/eclipse/jetty/jetty-servlets/9.4.7.v20170914/jetty-servlets-9.4.7.v20170914.jar "$TOMCAT_WEBAPPS"/ege-webservice/WEB-INF/lib/
+ADD http://central.maven.org/maven2/org/eclipse/jetty/jetty-util/9.4.7.v20170914/jetty-util-9.4.7.v20170914.jar "$TOMCAT_WEBAPPS"/ege-webservice/WEB-INF/lib/
 
-EXPOSE 8080
